@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Manager</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Add CryptoJS for encryption -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body class="login-page">
+
+    <div class="container">
+        <h1>Vaultaro Password Manager</h1>
+
+        <!-- Login Form for the main screen. This will show the "Enter Username and password texts so people know what box to put their details into" -->
+        <div id="login-form" class="form-container">
+            <h2>Login</h2>
+            <label for="login-username">Username:</label>
+            <input type="text" id="login-username" placeholder="Enter Username" required>
+
+            <label for="login-password">Password:</label>
+            <input type="password" id="login-password" placeholder="Enter Password" required>
+            
+            <button onclick="login()">Login</button>
+            <p id="login-feedback" class="feedback"></p>
+        </div>
+
+        <hr>
+
+        <!-- Registration Form -->
+        <div id="register-form" class="form-container">
+            <h2>Register New Account</h2>
+            <label for="register-username">Username:</label>
+            <input type="text" id="register-username" placeholder="Choose Username" required>
+
+            <label for="register-password">Password:</label>
+            <input type="password" id="register-password" placeholder="Choose Password" required oninput="checkStrength()">
+
+            <!-- Password Strength Indicator for a newly registered username and password. Calls the function "register() which is a placeholder at the minute" -->
+            <div id="strength-meter">
+                <span id="strength-text">Password Strength: </span>
+                <div id="strength-bar"></div>
+            </div>
+
+            <button onclick="register()">Register</button>
+            <p id="register-feedback" class="feedback"></p>
+        </div>
+
+    </div>
+
+    <script>
+        function login() {
+            // Get the username and password input values
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+
+            // Check if username and password match the admin placeholder. I made this so I could easily log in at any time.
+            if (username === "admin" && password === "Admin123!") {
+                // Store the session data
+                localStorage.setItem('loggedIn', 'true');
+                
+                // Store encryption key in local storage for safety reasons
+                localStorage.setItem('encryptionKey', CryptoJS.SHA256(password).toString());
+                
+                // Move onto the index file once logged in
+                window.location.href = "index.html";
+            } else {
+                // Give an error if an incorrect log in was given
+                document.getElementById('login-feedback').textContent = "Invalid username or password.";
+                document.getElementById('login-feedback').style.color = "red";
+            }
+        }
+        
+        function checkStrength() {
+            // Add strength checking logic here
+            const password = document.getElementById('register-password').value;
+            
+            // Simple strength check, by seeing if it has variables, like Uppercase, Lowercase, Special Characters etc.
+            let score = 0;
+            
+            if (password.length >= 8) score++;
+            if (/[A-Z]/.test(password)) score++;
+            if (/[a-z]/.test(password)) score++;
+            if (/\d/.test(password)) score++;
+            if (/[^A-Za-z0-9]/.test(password)) score++;
+            
+            // Update strength bar for any new passwords added or removed
+            const strengthBar = document.getElementById('strength-bar');
+            const percentage = (score / 5) * 100;
+            
+            strengthBar.style.width = percentage + '%';
+            
+            // Change color based on strength from RED to GREEN
+            if (percentage < 40) {
+                strengthBar.style.backgroundColor = 'red';
+            } else if (percentage < 60) {
+                strengthBar.style.backgroundColor = 'orange';
+            } else if (percentage < 80) {
+                strengthBar.style.backgroundColor = 'yellow';
+            } else {
+                strengthBar.style.backgroundColor = 'green';
+            }
+        }
+        
+        function register() { 
+            // I ran out of time while making my register section, so I added this to show what it WOULD look like when you enter a new login
+            document.getElementById('register-feedback').textContent = "Registration successful! You can now log in.";
+            document.getElementById('register-feedback').style.color = "green";
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Manager</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Add CryptoJS for encryption -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body class="index-page">
+
+    <div class="container wide-container">
+        <!-- Return/Logout button in top right, which will bring you back out to the login screen, allowing you to sign in again -->
+        <div class="header-actions">
+            <button id="logout-btn" onclick="logout()">Return</button>
+        </div>
+        
+        <h1>Vaultaro Password Manager</h1>
+        
+        <div class="dashboard-layout">
+            <!-- Left sidebar for username tabs -->
+            <div class="sidebar">
+                <h3>Accounts</h3>
+                <ul id="account-tabs"></ul>
+            </div>
+            
+            <!-- Right content area -->
+            <div class="content-area">
+                <div class="password-display">
+                    <h2 id="selected-username">Select an account</h2>
+                    <div class="password-container">
+                        <input type="password" id="password-field" readonly>
+                        <button id="toggle-password" onclick="togglePasswordVisibility()">Show</button>
+                    </div>
+                </div>
+
+                <div class="strength-visual">
+                    <h2>Overall Password Strength</h2>
+                    <div id="strength-bar">
+                        <div id="strength-level"></div>
+                    </div>
+                </div>
+
+                <div class="filters">
+                    <button onclick="filterPasswords('all')" class="filter-btn active">All</button>
+                    <button onclick="filterPasswords('very-strong')">Very Strong</button>
+                    <button onclick="filterPasswords('strong')">Strong</button>
+                    <button onclick="filterPasswords('okay')">Okay</button>
+                    <button onclick="filterPasswords('weak')">Weak</button>
+                    <button onclick="filterPasswords('very-weak')">Very Weak</button>
+                </div>
+
+                <div id="weak-passwords">
+                    <h3>Weak Passwords and Websites</h3>
+                    <ul id="weak-password-list"></ul>
+                </div>
+
+                <div class="actions">
+                    <button onclick="addPassword()">Add a New Password</button>
+                    <button onclick="removeSelectedPassword()">Remove Selected Password</button>
+                    <button onclick="exportPasswords()">Backup / Export Passwords</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script to check login status and load accounts -->
+    <script>
+        // Master encryption key - derived from login password
+        let masterKey = 'Mast3r';
+        
+        window.onload = function() {
+            // Check if the user is logged in by looking at localStorage
+            const loggedIn = localStorage.getItem('loggedIn');
+            const encryptionKey = localStorage.getItem('encryptionKey');
+            
+            if (!loggedIn || !encryptionKey) {
+                // Redirect to login page if not logged in
+                window.location.href = "login.html";
+            } else {
+                // Set the master key from localStorage
+                masterKey = encryptionKey;
+                
+                // Load and decrypt accounts
+                loadAccountsData();
+                
+                // Set "All" filter as active by default
+                const filterButtons = document.querySelectorAll('.filters button');
+                filterButtons.forEach(btn => {
+                    btn.classList.remove('active');
+                    if (btn.textContent === 'All') {
+                        btn.classList.add('active');
+                    }
+                });
+            }
+            
+            // Set up before unload event to handle page close/refresh
+            window.addEventListener('beforeunload', function(e) {
+                // Re-encrypt data before leaving
+                encryptAndSaveAccounts();
+            });
+        };
+
+        // Function to encrypt data with AES
+        function encryptData(data, key) {
+            return CryptoJS.AES.encrypt(JSON.stringify(data), key).toString();
+        }
+        
+        // Function to decrypt data with AES
+        function decryptData(encryptedData, key) {
+            const bytes = CryptoJS.AES.decrypt(encryptedData, key);
+            return JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+        }
+        
+        // Load accounts data from localStorage
+        function loadAccountsData() {
+            // Try to use encrypted accounts from localStorage
+            const encryptedAccounts = localStorage.getItem('encryptedAccounts');
+            
+            if (encryptedAccounts) {
+                try {
+                    // Decrypt accounts from localStorage
+                    const accounts = decryptData(encryptedAccounts, masterKey);
+                    console.log("Using accounts from localStorage");
+                    
+                    // Process accounts
+                    processAccounts(accounts);
+                } catch (error) {
+                    console.error("Error decrypting accounts:", error);
+                    
+                    // If decryption fails, use default accounts
+                    createDefaultAccounts();
+                }
+            } else {
+                // If no encrypted accounts exist, create default accounts
+                createDefaultAccounts();
+            }
+        }
+        
+        // Create and use example accounts for demonstration purposes. This just makes the presentation easier.
+        function createDefaultAccounts() {
+            console.log("Creating default accounts");
+            
+            const defaultAccounts = [
+                { "username": "admin", "password": "Admin123!" },
+                { "username": "Snapchat", "password": "Ex@mple V3ry Str0ng" },
+                { "username": "Instagram", "password": "Pass@word" },
+                { "username": "Reddit", "password": "Weakpassword" },
+                { "username": "Discord", "password": "SuperSecure$1" },
+                { "username": "Amazon Music", "password": "Short1" }
+            ];
+            
+            // Process accounts
+            processAccounts(defaultAccounts);
+        }
+        
+        // Process accounts data (encrypt, display, check strength)
+        function processAccounts(accounts) {
+            // Encrypt and save accounts
+            const encryptedAccounts = encryptData(accounts, masterKey);
+            localStorage.setItem('encryptedAccounts', encryptedAccounts);
+            
+            // Populate account tabs
+            populateAccountTabs(accounts);
+            
+            // Check password strengths
+            checkPasswords(accounts);
+        }
+        
+        // Encrypt and save accounts data
+        function encryptAndSaveAccounts() {
+            // Gather all account data from the DOM
+            const tabs = document.querySelectorAll('#account-tabs li');
+            const accounts = [];
+            
+            tabs.forEach(tab => {
+                accounts.push({
+                    username: tab.dataset.username,
+                    password: tab.dataset.password
+                });
+            });
+            
+            // Encrypt accounts data
+            const encryptedAccounts = encryptData(accounts, masterKey);
+            
+            // Save encrypted data
+            localStorage.setItem('encryptedAccounts', encryptedAccounts);
+        }
+        
+        // Function to populate account tabs, meaning you can see all of your saved accounts on the left side of the index main screen
+        function populateAccountTabs(accounts) {
+            const accountTabs = document.getElementById('account-tabs');
+            accountTabs.innerHTML = ''; // Clear any existing tabs, so there are no clashes
+            
+            accounts.forEach(account => {
+                const li = document.createElement('li');
+                li.textContent = account.username;
+                li.dataset.username = account.username;
+                li.dataset.password = account.password;
+                
+                // There is a show password button, meaning if someone is looking over you shoulder, they will not see all of you passwords.
+                li.addEventListener('click', function() {
+                    showPassword(this.dataset.username, this.dataset.password);
+                    
+                    // Highlight the selected tab, for better visual clarity
+                    const allTabs = document.querySelectorAll('#account-tabs li');
+                    allTabs.forEach(tab => tab.classList.remove('active'));
+                    this.classList.add('active');
+                });
+                
+                accountTabs.appendChild(li);
+            });
+        }
+        
+        // Function to display the selected account's password, ensuring you only see what you want to see
+        function showPassword(username, password) {
+            document.getElementById('selected-username').textContent = username;
+            
+            const passwordField = document.getElementById('password-field');
+            passwordField.value = password;
+            passwordField.type = 'password'; // Reset to hidden password
+            
+            document.getElementById('toggle-password').textContent = 'Show';
+        }
+        
+        // There is a show password button, meaning if someone is looking over you shoulder, they will not see all of you passwords.
+        function togglePasswordVisibility() {
+            const passwordField = document.getElementById('password-field');
+            const toggleBtn = document.getElementById('toggle-password');
+            
+            if (passwordField.type === 'password') {
+                passwordField.type = 'text';
+                toggleBtn.textContent = 'Hide';
+            } else {
+                passwordField.type = 'password';
+                toggleBtn.textContent = 'Show';
+            }
+        }
+
+        // Function to check password strength based on uppercase, lowercase, special character, number and space.
+        function checkPasswordStrength(password) {
+            let score = 0;
+
+            const criteria = {
+                hasUppercase: /[A-Z]/.test(password),
+                hasLowercase: /[a-z]/.test(password),
+                hasNumber: /\d/.test(password),
+                hasSpecialChar: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+                hasMinLength: password.length >= 8,
+            };
+
+            // Increase score for each passed variation, which will give a rough score on complexity
+            if (criteria.hasUppercase) score++;
+            if (criteria.hasLowercase) score++;
+            if (criteria.hasNumber) score++;
+            if (criteria.hasSpecialChar) score++;
+            if (criteria.hasMinLength) score++;  // Minimum length of 8 characters for safety reasons
+
+            return score;
+        }
+
+        // Function to get password tier based on the score
+        function getPasswordTier(score) {
+            switch(score) {
+                case 5:
+                    return 'very-strong';
+                case 4:
+                    return 'strong';
+                case 3:
+                    return 'okay';
+                case 2:
+                    return 'weak';
+                case 1:
+                case 0:
+                    return 'very-weak';
+                default:
+                    return 'very-weak';
+            }
+        }
+
+        // Function to check all passwords
+        function checkPasswords(accounts) {
+            const weakPasswords = [];
+            
+            accounts.forEach(account => {
+                const score = checkPasswordStrength(account.password);
+                const tier = getPasswordTier(score);
+                if (tier === 'weak' || tier === 'very-weak') {
+                    weakPasswords.push({ username: account.username, password: account.password, tier });
+                }
+            });
+
+            // Display weak passwords to help users see what they need to change
+            displayWeakPasswords(weakPasswords);
+            
+            // Update overall strength meter
+            updateStrengthMeter(accounts);
+        }
+        
+        // Function to update the overall strength meter if any changes are made
+        function updateStrengthMeter(accounts) {
+            let totalScore = 0;
+            accounts.forEach(account => {
+                totalScore += checkPasswordStrength(account.password);
+            });
+            
+            const averageScore = totalScore / accounts.length;
+            const percentage = (averageScore / 5) * 100;
+            
+            document.getElementById('strength-level').style.width = `${percentage}%`;
+            
+            // Change color based on strength from RED to GREEN for better visual clarity
+            const strengthLevel = document.getElementById('strength-level');
+            if (percentage < 40) {
+                strengthLevel.style.backgroundColor = '#FF4136'; // Red
+            } else if (percentage < 60) {
+                strengthLevel.style.backgroundColor = '#FF851B'; // Orange
+            } else if (percentage < 80) {
+                strengthLevel.style.backgroundColor = '#FFDC00'; // Yellow
+            } else {
+                strengthLevel.style.backgroundColor = '#2ECC40'; // Green
+            }
+        }
+
+        // Function to display weak passwords in the UI
+        function displayWeakPasswords(weakPasswords) {
+            const weakPasswordList = document.getElementById('weak-password-list');
+            weakPasswordList.innerHTML = ''; // Clear existing list
+            
+            if (weakPasswords.length === 0) {
+                const li = document.createElement('li');
+                li.textContent = 'No weak passwords detected.';
+                weakPasswordList.appendChild(li);
+                return;
+            }
+            
+            weakPasswords.forEach(account => {
+                const li = document.createElement('li');
+                li.textContent = `${account.username} has a ${account.tier} password.`;
+                weakPasswordList.appendChild(li);
+            });
+        }
+        
+        // Function to filter passwords by strength, meaning you can see only your strong or weak passwords, depending on what you want to see
+        function filterPasswords(strength) {
+            // Update active filter button
+            const filterButtons = document.querySelectorAll('.filters button');
+            filterButtons.forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent.toLowerCase() === strength) {
+                    btn.classList.add('active');
+                } else if (strength === 'all' && btn.textContent === 'All') {
+                    btn.classList.add('active');
+                }
+            });
+            
+            const tabs = document.querySelectorAll('#account-tabs li');
+            
+            tabs.forEach(tab => {
+                const password = tab.dataset.password;
+                
+                if (strength === 'all') {
+                    // Show all passwords if "All" is selected
+                    tab.style.display = 'block';
+                } else {
+                    // Otherwise filter by strength
+                    const score = checkPasswordStrength(password);
+                    const tier = getPasswordTier(score);
+                    
+                    if (tier === strength) {
+                        tab.style.display = 'block';
+                    } else {
+                        tab.style.display = 'none';
+                    }
+                }
+            });
+        }
+        
+        // Logout function
+        function logout() {
+            // Encrypt and save accounts before logging out
+            encryptAndSaveAccounts();
+            
+            // Clear login session but keep encrypted data
+            localStorage.removeItem('loggedIn');
+            localStorage.removeItem('encryptionKey');
+            
+            // Redirect to login page
+            window.location.href = "login.html";
+        }
+        
+        // Function to add a new password
+        function addPassword() {
+            const username = prompt("Enter username:");
+            if (!username) return;
+            
+            const password = prompt("Enter password:");
+            if (!password) return;
+            
+            // Create new account tab
+            const accountTabs = document.getElementById('account-tabs');
+            const li = document.createElement('li');
+            li.textContent = username;
+            li.dataset.username = username;
+            li.dataset.password = password;
+            
+            // Add click event for interactivity
+            li.addEventListener('click', function() {
+                showPassword(this.dataset.username, this.dataset.password);
+                
+                const allTabs = document.querySelectorAll('#account-tabs li');
+                allTabs.forEach(tab => tab.classList.remove('active'));
+                this.classList.add('active');
+            });
+            
+            accountTabs.appendChild(li);
+            
+            // Re-check all passwords and update UI
+            const accounts = [];
+            document.querySelectorAll('#account-tabs li').forEach(tab => {
+                accounts.push({
+                    username: tab.dataset.username,
+                    password: tab.dataset.password
+                });
+            });
+            
+            // Save changes
+            encryptAndSaveAccounts();
+            
+            // Update password strength indicators
+            checkPasswords(accounts);
+        }
+        
+        // Function to export passwords
+        function exportPasswords() {
+            const accounts = [];
+            document.querySelectorAll('#account-tabs li').forEach(tab => {
+                accounts.push({
+                    username: tab.dataset.username,
+                    password: tab.dataset.password
+                });
+            });
+            
+            // Create a blob with account data for easy dump of passwords and usernames
+            const blob = new Blob([JSON.stringify(accounts, null, 2)], 
+                                {type: 'application/json'});
+            
+            // Create download link
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'password_vault_backup.json';
+            
+            // Trigger download
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+        // Function to remove the currently selected password
+    function removeSelectedPassword() {
+    const selectedUsername = document.getElementById('selected-username').textContent;
+  
+    // If no account is selected or it's the default text
+    if (!selectedUsername || selectedUsername === 'Select an account') {
+    alert('Please select an account to remove.');
+    return;
+    }
+  
+    // Confirm before removing
+    if (!confirm(`Are you sure you want to remove the account for "${selectedUsername}"?`)) {
+    return;
+    }
+  
+    // Remove the selected tab
+    const tabs = document.querySelectorAll('#account-tabs li');
+    let tabRemoved = false;
+  
+    tabs.forEach(tab => {
+    if (tab.dataset.username === selectedUsername) {
+      tab.remove();
+      tabRemoved = true;
+    }
+    });
+  
+    if (tabRemoved) {
+    // Reset the password display when a password is removed so it updates
+    document.getElementById('selected-username').textContent = 'Select an account';
+    document.getElementById('password-field').value = '';
+    
+    // Gather remaining accounts and update storage
+    const accounts = [];
+    document.querySelectorAll('#account-tabs li').forEach(tab => {
+      accounts.push({
+        username: tab.dataset.username,
+        password: tab.dataset.password
+      });
+    });
+    
+    // Save changes
+    encryptAndSaveAccounts();
+    
+    // Update password strength indicators
+    checkPasswords(accounts);
+    
+    alert('Account removed successfully.');
+    }
+    }
+    </script>
+</body>
+</html>
